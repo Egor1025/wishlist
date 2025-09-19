@@ -13,7 +13,7 @@ uvicorn app.main:app --reload
 
 ## Ритуал перед PR
 ```bash
-ruff --fix .
+ruff check . --fix
 black .
 isort .
 pytest -q
