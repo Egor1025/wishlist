@@ -21,3 +21,10 @@ repos:
     hooks:
       - id: ruff
         args: ["--fix"]
+  - repo: local
+    hooks:
+      - id: no-push-to-main
+        name: Block push to main
+        entry: bash -c 'b=$(git rev-parse --abbrev-ref HEAD); if [ "$b" = "main" ]; then echo "Pushing to main is forbidden"; exit 1; fi'
+        language: system
+        stages: [ push ]
