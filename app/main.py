@@ -1,5 +1,8 @@
-from fastapi import FastAPI, HTTPException, Request
+from typing import Annotated, ClassVar
+
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 app = FastAPI(title="SecDev Course App", version="0.1.0")
 
@@ -34,24 +37,61 @@ def health():
     return {"status": "ok"}
 
 
-# Example minimal entity (for tests/demo)
-_DB = {"items": []}
+_DB = {"wishes": []}
 
 
-@app.post("/items")
-def create_item(name: str):
-    if not name or len(name) > 100:
-        raise ApiError(
-            code="validation_error", message="name must be 1..100 chars", status=422
-        )
-    item = {"id": len(_DB["items"]) + 1, "name": name}
-    _DB["items"].append(item)
-    return item
+class Wish(BaseModel):
+    COUNTER: ClassVar[int] = 0
+    title: Annotated[str, Field(min_length=1, max_length=50)] | None = None
+    link: str | None = None
+    price_estimate: Annotated[int, Field(ge=0)] | None = None
+    notes: str | None = None
 
 
-@app.get("/items/{item_id}")
-def get_item(item_id: int):
-    for it in _DB["items"]:
-        if it["id"] == item_id:
-            return it
-    raise ApiError(code="not_found", message="item not found", status=404)
+@app.get("/wishes/{wish_id}")
+def get_wish(wish_id: int):
+    for wish in _DB["wishes"]:
+        if wish["id"] == wish_id:
+            return wish
+    raise ApiError(code="not_found", message="wish doesn't exist", status=404)
+
+
+@app.post("/wishes", status_code=201)
+def create_wish(data: Wish):
+    if not data.title:
+        raise ApiError(code="validation_error", message="title is required", status=422)
+    Wish.COUNTER += 1
+    wish = {
+        "id": Wish.COUNTER,
+        "title": data.title,
+        "link": data.link,
+        "price_estimate": data.price_estimate,
+        "notes": data.notes,
+    }
+    _DB["wishes"].append(wish)
+    return wish
+
+
+@app.patch("/wishes/{wish_id}")
+def edit_wish(wish_id: int, data: Wish):
+    wish = get_wish(wish_id)
+    updates = data.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        wish[field] = value
+    return wish
+
+
+@app.delete("/wishes/{wish_id}", status_code=204)
+def delete_wish(wish_id: int):
+    wish = get_wish(wish_id)
+    _DB["wishes"].remove(wish)
+    return None
+
+
+@app.get("/wishes")
+def price_filter(price_lt: int = Query(..., alias="price<")):
+    return [
+        wish
+        for wish in _DB["wishes"]
+        if wish["price_estimate"] is not None and wish["price_estimate"] < price_lt
+    ]
