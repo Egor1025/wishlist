@@ -1,8 +1,8 @@
-from typing import ClassVar
+from typing import Annotated, ClassVar
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, conint, constr
+from pydantic import BaseModel, Field
 
 app = FastAPI(title="SecDev Course App", version="0.1.0")
 
@@ -42,9 +42,9 @@ _DB = {"wishes": []}
 
 class Wish(BaseModel):
     COUNTER: ClassVar[int] = 0
-    title: constr(min_length=1, max_length=50) | None = None
+    title: Annotated[str, Field(min_length=1, max_length=50)] | None = None
     link: str | None = None
-    price_estimate: conint(ge=0) | None = None
+    price_estimate: Annotated[int, Field(ge=0)] | None = None
     notes: str | None = None
 
 
