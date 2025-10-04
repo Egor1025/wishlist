@@ -35,4 +35,4 @@ jobs:
         run: pytest -q
 
       - name: Pre-commit (all files)
-        run: pre-commit run --all-files
+        run: pre-commit run --all-files --hook-stage manual
