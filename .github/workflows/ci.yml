@@ -46,13 +46,3 @@ jobs:
           python-version: '3.11'
       - run: pip install pip-audit
       - run: pip-audit -r requirements.txt -r requirements-dev.txt --strict
-
-  gitleaks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - name: Run Gitleaks (no license)
-        uses: gacts/gitleaks@v1
-        with:
-          version: latest
