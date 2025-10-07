@@ -1,3 +1,5 @@
+import json
+import logging
 from typing import Annotated, ClassVar
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -77,14 +79,29 @@ def edit_wish(wish_id: int, data: Wish):
     wish = get_wish(wish_id)
     updates = data.model_dump(exclude_unset=True)
     for field, value in updates.items():
+        if field == "title" and not value:
+            raise ApiError(
+                code="validation_error", message="title can't be empty", status=422
+            )
         wish[field] = value
     return wish
+
+
+audit = logging.getLogger("app.audit")
 
 
 @app.delete("/wishes/{wish_id}", status_code=204)
 def delete_wish(wish_id: int):
     wish = get_wish(wish_id)
     _DB["wishes"].remove(wish)
+
+    audit.info(
+        json.dumps(
+            {"action": "delete", "object_id": wish_id, "result": "success"},
+            ensure_ascii=False,
+        )
+    )
+
     return None
 
 

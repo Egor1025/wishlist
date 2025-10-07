@@ -1,3 +1,4 @@
+import json
 from random import sample
 
 from fastapi.testclient import TestClient
@@ -9,6 +10,54 @@ client = TestClient(app)
 
 def clear_db():
     _DB["wishes"].clear()
+
+
+def test_invalid_inputs_return_4xx():
+    clear_db()
+
+    first = {"title": "first"}
+    client.post("/wishes", json=first)
+
+    bad_params = [
+        {"title": ""},
+        {"title": 0},
+        {"title": None},
+        {"title": "a" * 51},
+        {"title": [], "notes": "some text here"},
+        {"title": "title", "price_estimate": -1},
+        {"title": "title", "link": 0, "notes": 0},
+    ]
+
+    for param in bad_params:
+        r = client.patch("/wishes/1", json=param)
+        assert 400 <= r.status_code < 500, r.text
+
+    bad_params += [
+        {},
+        {1: "one"},
+        {"notes": "some text"},
+        {"param1": 1, "param2": 2, "param3": 3},
+        {"link": "https://google.com/", "price_estimate": 9999999999},
+    ]
+
+    for param in bad_params:
+        r = client.patch("/wishes/0", json=param)
+        assert 400 <= r.status_code < 500, r.text
+
+        r = client.post("/wishes", json=param)
+        assert 400 <= r.status_code < 500, r.text
+
+
+def test_audit_log_emitted_on_delete(caplog):
+    wid = client.post("/wishes", json={"title": "x"}).json()["id"]
+    with caplog.at_level("INFO", logger="app.audit"):
+        r = client.delete(f"/wishes/{wid}")
+    assert r.status_code == 204
+
+    records = [rec for rec in caplog.records if rec.name == "app.audit"]
+    assert records, "Нет записей аудита"
+    event = json.loads(records[-1].message)
+    assert event["action"] == "delete" and event["object_id"] == wid
 
 
 def test_not_found_and_nonexist_wish():
