@@ -35,4 +35,14 @@ jobs:
         run: pytest -q
 
       - name: Pre-commit (all files)
-        run: pre-commit run --all-files
+        run: pre-commit run --all-files --hook-stage manual
+
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pip-audit
+      - run: pip-audit -r requirements.txt -r requirements-dev.txt --strict
