@@ -12,8 +12,5 @@
 ## Чек-лист для ревью
 См. [REVIEW_CHECKLIST.md](./REVIEW_CHECKLIST.md)
 
-## Карта веток
-- `main`: основная ветка
-
 ## Issue
 Closes #

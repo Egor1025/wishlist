@@ -136,3 +136,35 @@ def test_price_lower_filter():
     r = client.get("/wishes", params={"price<": 6})
     assert r.status_code == 200
     assert len(r.json()) == 5
+
+
+def test_error_envelope_whitelist_and_no_trace():
+    """
+    Risk linkage: R5 (F6–F7, NFR-02, NFR-06)
+    Проверяем, что ответы об ошибках не раскрывают внутренние детали:
+    - тело — JSON с корневым ключом "error";
+    - нет технических полей вроде trace/stack/debug;
+    - в теле ответа нет текстов стектрейса "Traceback".
+    """
+    # 1) Провоцируем 404 Not Found
+    r = client.get("/wishes/424242")
+    assert r.status_code == 404, r.text
+    assert r.headers.get("content-type", "").startswith("application/json")
+
+    body = r.json()
+    assert "error" in body, body
+    # Разрешённый минимальный набор ключей в error — не проверяем строго,
+    # но запрещаем технические поля (trace/stack/debug/exception/details)
+    forbidden_error_keys = {"trace", "stack", "debug", "exception", "details"}
+    assert not (forbidden_error_keys & set(body["error"].keys())), body["error"]
+    assert "Traceback" not in r.text
+
+    # 2) Провоцируем 422 Validation Error
+    r = client.post("/wishes", json={"title": None})
+    assert r.status_code == 422, r.text
+    assert r.headers.get("content-type", "").startswith("application/json")
+
+    body = r.json()
+    assert "error" in body, body
+    assert not (forbidden_error_keys & set(body["error"].keys())), body["error"]
+    assert "Traceback" not in r.text
