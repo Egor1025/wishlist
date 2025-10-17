@@ -1,5 +1,7 @@
 import json
 import logging
+from datetime import datetime, timezone
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, ClassVar
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -7,6 +9,22 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="SecDev Course App", version="0.1.0")
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _normalize_price(value: Decimal | int | float | str | None) -> Decimal | None:
+    if value is None:
+        return None
+
+    dec = Decimal(str(value))
+    if dec < 0:
+        raise ApiError(
+            code="validation_error", message="price can't be negative", status=422
+        )
+    return dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 class ApiError(Exception):
@@ -46,7 +64,8 @@ class Wish(BaseModel):
     COUNTER: ClassVar[int] = 0
     title: Annotated[str, Field(min_length=1, max_length=50)] | None = None
     link: str | None = None
-    price_estimate: Annotated[int, Field(ge=0)] | None = None
+    price_estimate: Decimal | None = None
+    updated_at: datetime | None = None
     notes: str | None = None
 
 
@@ -63,11 +82,13 @@ def create_wish(data: Wish):
     if not data.title:
         raise ApiError(code="validation_error", message="title is required", status=422)
     Wish.COUNTER += 1
+    normalized_price = _normalize_price(data.price_estimate)
     wish = {
         "id": Wish.COUNTER,
         "title": data.title,
         "link": data.link,
-        "price_estimate": data.price_estimate,
+        "price_estimate": normalized_price,
+        "updated_at": _utcnow(),
         "notes": data.notes,
     }
     _DB["wishes"].append(wish)
@@ -78,6 +99,9 @@ def create_wish(data: Wish):
 def edit_wish(wish_id: int, data: Wish):
     wish = get_wish(wish_id)
     updates = data.model_dump(exclude_unset=True)
+    if "price_estimate" in updates:
+        updates["price_estimate"] = _normalize_price(updates["price_estimate"])
+    updates["updated_at"] = _utcnow()
     for field, value in updates.items():
         if field == "title" and not value:
             raise ApiError(
@@ -106,9 +130,10 @@ def delete_wish(wish_id: int):
 
 
 @app.get("/wishes")
-def price_filter(price_lt: int = Query(..., alias="price<")):
+def price_filter(price_lt: Decimal = Query(..., alias="price<")):
     return [
         wish
         for wish in _DB["wishes"]
-        if wish["price_estimate"] is not None and wish["price_estimate"] < price_lt
+        if wish["price_estimate"] is not None
+        and wish["price_estimate"] < _normalize_price(price_lt)
     ]
