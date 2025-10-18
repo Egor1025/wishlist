@@ -1,4 +1,6 @@
 import json
+from datetime import datetime, timezone
+from decimal import Decimal
 from random import sample
 
 from fastapi.testclient import TestClient
@@ -55,7 +57,7 @@ def test_audit_log_emitted_on_delete(caplog):
     assert r.status_code == 204
 
     records = [rec for rec in caplog.records if rec.name == "app.audit"]
-    assert records, "Нет записей аудита"
+    assert records
     event = json.loads(records[-1].message)
     assert event["action"] == "delete" and event["object_id"] == wid
 
@@ -117,6 +119,7 @@ def test_crud_wish():
         "title": "bmw 430i",
         "link": "https://www.bmw.de/",
         "price_estimate": 5_500_000,
+        "updated_at": r.json()["updated_at"],
         "notes": notes,
     }
 
@@ -138,28 +141,17 @@ def test_price_lower_filter():
     assert len(r.json()) == 5
 
 
-def test_error_envelope_whitelist_and_no_trace():
-    """
-    Risk linkage: R5 (F6–F7, NFR-02, NFR-06)
-    Проверяем, что ответы об ошибках не раскрывают внутренние детали:
-    - тело — JSON с корневым ключом "error";
-    - нет технических полей вроде trace/stack/debug;
-    - в теле ответа нет текстов стектрейса "Traceback".
-    """
-    # 1) Провоцируем 404 Not Found
+def test_error_envelope_safe_output():
     r = client.get("/wishes/424242")
     assert r.status_code == 404, r.text
     assert r.headers.get("content-type", "").startswith("application/json")
 
     body = r.json()
     assert "error" in body, body
-    # Разрешённый минимальный набор ключей в error — не проверяем строго,
-    # но запрещаем технические поля (trace/stack/debug/exception/details)
     forbidden_error_keys = {"trace", "stack", "debug", "exception", "details"}
     assert not (forbidden_error_keys & set(body["error"].keys())), body["error"]
     assert "Traceback" not in r.text
 
-    # 2) Провоцируем 422 Validation Error
     r = client.post("/wishes", json={"title": None})
     assert r.status_code == 422, r.text
     assert r.headers.get("content-type", "").startswith("application/json")
@@ -168,3 +160,36 @@ def test_error_envelope_whitelist_and_no_trace():
     assert "error" in body, body
     assert not (forbidden_error_keys & set(body["error"].keys())), body["error"]
     assert "Traceback" not in r.text
+
+
+def test_price_normalization():
+    r = client.post(
+        "/wishes", json={"title": "Нормализация цены", "price_estimate": 10.127}
+    )
+    assert r.status_code == 201
+    data = r.json()
+
+    price = Decimal(str(data["price_estimate"]))
+    assert price == Decimal("10.13")
+
+
+def test_datetime_normalization():
+    r = client.post("/wishes", json={"title": "UTC"})
+    assert r.status_code == 201
+    updated_at = r.json()["updated_at"]
+
+    ts = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+    assert ts.tzinfo is not None
+    assert ts.utcoffset() == timezone.utc.utcoffset(ts)
+
+
+def test_decimal_serialization():
+    r = client.post(
+        "/wishes", json={"title": "decimal->float", "price_estimate": 19.995}
+    )
+    assert r.status_code == 201
+    data = r.json()
+
+    price = data["price_estimate"]
+    assert isinstance(price, (float, int))
+    assert abs(Decimal(str(price)) - Decimal("20.00")) < Decimal("0.0001")
