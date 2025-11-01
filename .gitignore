@@ -14,3 +14,5 @@ build/
 .idea/
 # OS
 .DS_Store
+# DB
+app.sqlite
