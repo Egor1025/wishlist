@@ -1,6 +1,6 @@
 # NFR_BDD.md — Приёмка ключевых NFR в формате Gherkin
 
-## Feature: p95 задержка API
+### Feature: p95 задержка API
 ```
 Scenario: p95 <= 300 ms при 30 RPS на базовых GET
   Given развёрнут сервис с тестовыми >= 100 wishes
@@ -9,7 +9,7 @@ Scenario: p95 <= 300 ms при 30 RPS на базовых GET
   Then 95-й перцентиль времени ответа <= 300 ms для каждого эндпоинта
 ```
 
-## Feature: Уязвимости зависимостей
+### Feature: Уязвимости зависимостей
 ```
 Scenario: В CI нет High/Critical уязвимостей
   Given настроен запуск pip-audit в CI
