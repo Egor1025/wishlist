@@ -1,17 +1,18 @@
 import json
 import logging
 from datetime import datetime, timezone
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core.context import get_cid
 from app.core.errors import ApiError
 from app.database import get_db
 from app.models import WishORM
 from app.schemas import WishIn, WishOut
 
-router = APIRouter()
+router = APIRouter(prefix="/wishes")
 
 audit = logging.getLogger("app.audit")
 
@@ -25,18 +26,27 @@ def _utcnow() -> str:
     )
 
 
-def _normalize_price(value: Decimal | int | float | str | None) -> Decimal | None:
-    if value is None:
-        return None
-    dec = Decimal(str(value))
-    if dec < 0:
-        raise ApiError(
-            code="validation_error", message="price can't be negative", status=422
-        )
-    return dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+MAX_SEARCH_QUERY_LENGTH = 100
 
 
-@router.get("/wishes/{wish_id}", response_model=WishOut)
+def _escape_like(value: str) -> str:
+    value = value.replace("\\", "\\\\")
+    value = value.replace("%", "\\%")
+    value = value.replace("_", "\\_")
+    return f"%{value}%"
+
+
+@router.get("/search", response_model=list[WishOut])
+def search_wishes(
+    q: str = Query(..., min_length=1, max_length=MAX_SEARCH_QUERY_LENGTH),
+    db: Session = Depends(get_db),
+):
+    pattern = _escape_like(q)
+    result = db.query(WishORM).filter(WishORM.title.ilike(pattern, escape="\\")).all()
+    return result
+
+
+@router.get("/{wish_id}", response_model=WishOut)
 def get_wish(wish_id: int, db: Session = Depends(get_db)):
     wish = db.get(WishORM, wish_id)
     if not wish:
@@ -44,34 +54,44 @@ def get_wish(wish_id: int, db: Session = Depends(get_db)):
     return wish
 
 
-@router.post("/wishes", status_code=201, response_model=WishOut)
+@router.post("", status_code=201, response_model=WishOut)
 def create_wish(data: WishIn, db: Session = Depends(get_db)):
     if not data.title:
         raise ApiError(code="validation_error", message="title is required", status=422)
 
-    normalized_price = _normalize_price(data.price_estimate)
     wish = WishORM(
         title=data.title,
         link=data.link,
-        price_estimate=normalized_price,
+        price_estimate=data.price_estimate,
         updated_at=_utcnow(),
         notes=data.notes,
     )
     db.add(wish)
     db.commit()
     db.refresh(wish)
+
+    audit.info(
+        json.dumps(
+            {
+                "action": "create",
+                "wish_id": wish.id,
+                "success": True,
+                "correlation_id": get_cid(),
+            },
+            ensure_ascii=False,
+        )
+    )
     return wish
 
 
-@router.patch("/wishes/{wish_id}", response_model=WishOut)
+@router.patch("/{wish_id}", response_model=WishOut)
 def edit_wish(wish_id: int, data: WishIn, db: Session = Depends(get_db)):
     wish = db.get(WishORM, wish_id)
     if not wish:
         raise ApiError(code="not_found", message="wish doesn't exist", status=404)
 
     updates = data.model_dump(exclude_unset=True)
-    if "price_estimate" in updates:
-        updates["price_estimate"] = _normalize_price(updates["price_estimate"])
+
     if "title" in updates and not updates["title"]:
         raise ApiError(
             code="validation_error", message="title can't be empty", status=422
@@ -83,10 +103,22 @@ def edit_wish(wish_id: int, data: WishIn, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(wish)
+
+    audit.info(
+        json.dumps(
+            {
+                "action": "update",
+                "wish_id": wish.id,
+                "success": True,
+                "correlation_id": get_cid(),
+            },
+            ensure_ascii=False,
+        )
+    )
     return wish
 
 
-@router.delete("/wishes/{wish_id}", status_code=204)
+@router.delete("/{wish_id}", status_code=204)
 def delete_wish(wish_id: int, db: Session = Depends(get_db)):
     wish = db.get(WishORM, wish_id)
     if not wish:
@@ -97,22 +129,26 @@ def delete_wish(wish_id: int, db: Session = Depends(get_db)):
 
     audit.info(
         json.dumps(
-            {"action": "delete", "object_id": wish_id, "result": "success"},
+            {
+                "action": "delete",
+                "wish_id": wish.id,
+                "success": True,
+                "correlation_id": get_cid(),
+            },
             ensure_ascii=False,
         )
     )
     return None
 
 
-@router.get("/wishes", response_model=list[WishOut])
+@router.get("", response_model=list[WishOut])
 def price_filter(
     price_lt: Decimal = Query(..., alias="price<"), db: Session = Depends(get_db)
 ):
-    normalized = _normalize_price(price_lt)
     result = (
         db.query(WishORM)
         .filter(WishORM.price_estimate.isnot(None))
-        .filter(WishORM.price_estimate < normalized)
+        .filter(WishORM.price_estimate < price_lt)
         .all()
     )
     return result

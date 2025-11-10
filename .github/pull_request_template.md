@@ -5,7 +5,7 @@
 - ...
 
 ## Как проверял
-- [ ] `ruff/black/isort` локально
+- [ ] `ruff/black/bandit` локально
 - [ ] `pytest -q` зелёный
 - [ ] `pre-commit run --all-files`
 - [ ] `pip-audit -r requirements.txt -r requirements-dev.txt --strict`

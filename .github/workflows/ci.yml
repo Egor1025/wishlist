@@ -1,4 +1,4 @@
-name: CI
+name: Сиай
 on:
   pull_request:
   push:
@@ -25,17 +25,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Lint & Format
-        run: |
-          ruff check --output-format=github .
-          black --check .
-          isort --check-only .
-
       - name: Tests
         run: pytest -q
 
       - name: Pre-commit (all files)
-        run: pre-commit run --all-files --hook-stage manual
+        run: pre-commit run --all-files
 
   pip-audit:
     runs-on: ubuntu-latest
