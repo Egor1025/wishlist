@@ -44,9 +44,7 @@ def test_validation_error(client):
 
 
 def test_price_normalization(client):
-    r = client.post(
-        "/wishes", json={"title": "Нормализация цены", "price_estimate": 10.127}
-    )
+    r = client.post("/wishes", json={"title": "Нормализация цены", "price_estimate": 10.127})
     assert r.status_code == 201
     data = r.json()
 
@@ -65,9 +63,7 @@ def test_datetime_normalization(client):
 
 
 def test_decimal_serialization(client):
-    r = client.post(
-        "/wishes", json={"title": "decimal->float", "price_estimate": 19.995}
-    )
+    r = client.post("/wishes", json={"title": "decimal->float", "price_estimate": 19.995})
     assert r.status_code == 201
     data = r.json()
 
@@ -88,9 +84,7 @@ def test_title_length_boundaries(client):
 
 
 def test_link_url_validation(client):
-    r = client.post(
-        "/wishes", json={"title": "with link", "link": "https://example.com"}
-    )
+    r = client.post("/wishes", json={"title": "with link", "link": "https://example.com"})
     assert r.status_code == 201
 
     bad_links = [
@@ -112,7 +106,5 @@ def test_notes_length_validation(client):
     r = client.post("/wishes", json={"title": "ok notes", "notes": ok_notes})
     assert r.status_code == 201
 
-    r = client.post(
-        "/wishes", json={"title": "too long notes", "notes": too_long_notes}
-    )
+    r = client.post("/wishes", json={"title": "too long notes", "notes": too_long_notes})
     assert r.status_code == 422, r.text

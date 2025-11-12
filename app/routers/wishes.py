@@ -18,12 +18,7 @@ audit = logging.getLogger("app.audit")
 
 
 def _utcnow() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 MAX_SEARCH_QUERY_LENGTH = 100
@@ -93,9 +88,7 @@ def edit_wish(wish_id: int, data: WishIn, db: Session = Depends(get_db)):
     updates = data.model_dump(exclude_unset=True)
 
     if "title" in updates and not updates["title"]:
-        raise ApiError(
-            code="validation_error", message="title can't be empty", status=422
-        )
+        raise ApiError(code="validation_error", message="title can't be empty", status=422)
 
     for field, value in updates.items():
         setattr(wish, field, value)
@@ -142,9 +135,7 @@ def delete_wish(wish_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=list[WishOut])
-def price_filter(
-    price_lt: Decimal = Query(..., alias="price<"), db: Session = Depends(get_db)
-):
+def price_filter(price_lt: Decimal = Query(..., alias="price<"), db: Session = Depends(get_db)):
     result = (
         db.query(WishORM)
         .filter(WishORM.price_estimate.isnot(None))
