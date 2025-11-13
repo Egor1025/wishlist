@@ -1,0 +1,15 @@
+name: wishlist
+
+services:
+  wishlist:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: wishlist-image
+    container_name: api
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../app.sqlite:/api/app.sqlite
