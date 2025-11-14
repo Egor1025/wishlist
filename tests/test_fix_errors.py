@@ -48,7 +48,5 @@ def test_error_logs_do_not_contain_request_body(client, caplog):
 
     assert 400 <= r.status_code < 500
 
-    messages = " ".join(
-        rec.getMessage() for rec in caplog.records if rec.name == "app.api"
-    )
+    messages = " ".join(rec.getMessage() for rec in caplog.records if rec.name == "app.api")
     assert secret not in messages
