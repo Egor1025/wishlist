@@ -6,6 +6,7 @@ COPY requirements.txt requirements-dev.txt ./
 RUN pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
 COPY app ./app
 COPY tests ./tests
+RUN mkdir -p ./db
 RUN pytest -q
 
 FROM ${PYTHON_BASE}

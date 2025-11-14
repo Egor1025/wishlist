@@ -47,4 +47,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build Docker image
-        run: docker compose -f docker/compose.yml build
+        run: |
+          chmod 777 db/
+          docker compose -f docker/compose.yml up --build -d
+          sleep 1
+          curl --fail http://localhost:8000/health

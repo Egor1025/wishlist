@@ -12,4 +12,4 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     volumes:
-      - ../app.sqlite:/api/app.sqlite
+      - ../db:/api/db

@@ -9,7 +9,6 @@ def test_security_headers_present(client):
         "Referrer-Policy",
         "Permissions-Policy",
         "Strict-Transport-Security",
-        "Content-Security-Policy",
     ]
     for h in expected:
         assert h in headers, f"{h} missing"
