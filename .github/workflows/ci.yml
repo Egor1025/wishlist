@@ -52,3 +52,46 @@ jobs:
           docker compose -f docker/compose.yml up --build -d
           sleep 1
           curl --fail http://localhost:8000/health
+
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [ docker-build, pip-audit ]
+#    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rsync and ssh client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync openssh-client
+
+      - name: Configure SSH
+        env:
+          NAS_SSH_KEY: ${{ secrets.NAS_SSH_KEY }}
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PORT: ${{ secrets.NAS_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$NAS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          cat <<EOF >> ~/.ssh/config
+          Host nas
+            HostName $NAS_HOST
+            User $NAS_USER
+            Port ${NAS_PORT:-22}
+            StrictHostKeyChecking no
+          EOF
+
+      - name: Sync project to NAS
+        env:
+          NAS_DEPLOY_PATH: ${{ secrets.NAS_DEPLOY_PATH }}
+        run: |
+          rsync -avz --delete -e "ssh nas" ./ nas:$NAS_DEPLOY_PATH/
+
+      - name: Run docker compose on NAS
+        env:
+          NAS_DEPLOY_PATH: ${{ secrets.NAS_DEPLOY_PATH }}
+        run: |
+          ssh nas "cd $NAS_DEPLOY_PATH && mkdir -p db && chmod 777 db && docker compose -f docker/compose.yml up -d --build"
