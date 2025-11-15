@@ -52,3 +52,81 @@ jobs:
           docker compose -f docker/compose.yml up --build -d
           sleep 1
           curl --fail http://localhost:8000/health
+
+  ssh-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install ssh client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssh-client
+
+      - name: Configure SSH key
+        env:
+          NAS_SSH_KEY: ${{ secrets.NAS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$NAS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Show public key from CI
+        run: |
+          ssh-keygen -y -f ~/.ssh/id_ed25519
+
+      - name: Test SSH connection with -vvv
+        env:
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PORT: ${{ secrets.NAS_PORT }}
+        run: |
+          ssh -vvv \
+            -i ~/.ssh/id_ed25519 \
+            -p ${NAS_PORT:-22} \
+            -o StrictHostKeyChecking=no \
+            ${NAS_USER}@${NAS_HOST} \
+            "echo OK_FROM_CI"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [ docker-build, pip-audit ]
+#    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rsync and ssh client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rsync openssh-client
+
+      - name: Configure SSH
+        env:
+          NAS_SSH_KEY: ${{ secrets.NAS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$NAS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: show public key used in CI
+        run: ssh-keygen -y -f ~/.ssh/id_ed25519
+
+      - name: Sync project to NAS
+        env:
+          NAS_DEPLOY_PATH: ${{ secrets.NAS_DEPLOY_PATH }}
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PORT: ${{ secrets.NAS_PORT }}
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/id_ed25519 -p $NAS_PORT -o StrictHostKeyChecking=no" \
+            ./ ${NAS_USER}@${NAS_HOST}:${NAS_DEPLOY_PATH}/
+
+      - name: Run docker compose on NAS
+        env:
+          NAS_DEPLOY_PATH: ${{ secrets.NAS_DEPLOY_PATH }}
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PORT: ${{ secrets.NAS_PORT }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p $NAS_PORT -o StrictHostKeyChecking=no \
+            ${NAS_USER}@${NAS_HOST} \
+            "cd ${NAS_DEPLOY_PATH} && mkdir -p db && chmod 777 db && docker compose -f docker/compose.yml up -d --build"
