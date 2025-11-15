@@ -69,29 +69,29 @@ jobs:
       - name: Configure SSH
         env:
           NAS_SSH_KEY: ${{ secrets.NAS_SSH_KEY }}
-          NAS_HOST: ${{ secrets.NAS_HOST }}
-          NAS_USER: ${{ secrets.NAS_USER }}
-          NAS_PORT: ${{ secrets.NAS_PORT }}
         run: |
           mkdir -p ~/.ssh
-          echo "$NAS_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$NAS_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          cat <<EOF >> ~/.ssh/config
-          Host nas
-            HostName $NAS_HOST
-            User $NAS_USER
-            Port ${NAS_PORT:-22}
-            StrictHostKeyChecking no
-          EOF
 
       - name: Sync project to NAS
         env:
           NAS_DEPLOY_PATH: ${{ secrets.NAS_DEPLOY_PATH }}
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PORT: ${{ secrets.NAS_PORT }}
         run: |
-          rsync -avz --delete -e "ssh nas" ./ nas:$NAS_DEPLOY_PATH/
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/id_ed25519 -p ${NAS_PORT:-22} -o StrictHostKeyChecking=no" \
+            ./ ${NAS_USER}@${NAS_HOST}:${NAS_DEPLOY_PATH}/
 
       - name: Run docker compose on NAS
         env:
           NAS_DEPLOY_PATH: ${{ secrets.NAS_DEPLOY_PATH }}
+          NAS_HOST: ${{ secrets.NAS_HOST }}
+          NAS_USER: ${{ secrets.NAS_USER }}
+          NAS_PORT: ${{ secrets.NAS_PORT }}
         run: |
-          ssh nas "cd $NAS_DEPLOY_PATH && mkdir -p db && chmod 777 db && docker compose -f docker/compose.yml up -d --build"
+          ssh -i ~/.ssh/id_ed25519 -p ${NAS_PORT:-22} -o StrictHostKeyChecking=no \
+            ${NAS_USER}@${NAS_HOST} \
+            "cd ${NAS_DEPLOY_PATH} && mkdir -p db && chmod 777 db && docker compose -f docker/compose.yml up -d --build"
