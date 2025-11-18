@@ -1,0 +1,12 @@
+name: wishlist
+
+services:
+  api:
+    image: ghcr.io/egor1025/wishlist:latest
+    container_name: wishlist-api
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./db:/api/db
