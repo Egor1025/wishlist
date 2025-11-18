@@ -11,14 +11,25 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+        python-version: [ "3.11", "3.12" ]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: "pip"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements.txt', 'requirements-dev.txt', 'pyproject.toml') }}
 
       - name: Install dependencies
         run: |
@@ -31,12 +42,31 @@ jobs:
       - name: Pre-commit (all files)
         run: pre-commit run -a
 
+      - name: Coverage report
+        run: |
+          pip install coverage
+          coverage run -m pytest
+          coverage xml
+
+      - name: Build wheel
+        run: |
+          pip install build
+          python -m build --wheel --outdir dist
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-artifacts
+          path: |
+            dist/*.whl
+            coverage.xml
+
   pip-audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
       - run: pip install pip-audit
       - run: pip-audit -r requirements.txt -r requirements-dev.txt --strict
