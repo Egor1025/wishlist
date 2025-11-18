@@ -12,6 +12,8 @@ RUN pytest -q
 FROM ${PYTHON_BASE}
 WORKDIR /api
 RUN useradd -m appuser
+RUN mkdir -p /api/db && chown -R appuser:appuser /api
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY --from=build --chown=appuser:appuser /api/app ./app
