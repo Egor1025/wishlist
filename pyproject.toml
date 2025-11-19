@@ -8,3 +8,8 @@ select = ["E", "F", "W", "I"]
 
 [tool.bandit]
 exclude_dirs = ["venv",".venv","tests"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+exclude = ["tests*", "docker*", "db*"]
