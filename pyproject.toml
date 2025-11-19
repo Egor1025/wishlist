@@ -8,3 +8,17 @@ select = ["E", "F", "W", "I"]
 
 [tool.bandit]
 exclude_dirs = ["venv",".venv","tests"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+exclude = ["tests*", "docker*", "db*"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wishlist"
+version = "0.1.0"
+requires-python = ">=3.11"
