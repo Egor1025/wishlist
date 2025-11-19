@@ -56,7 +56,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ci-artifacts
+          name: ci-artifacts-${{ matrix.os }}-py${{ matrix.python-version }}
           path: |
             dist/*.whl
             coverage.xml
