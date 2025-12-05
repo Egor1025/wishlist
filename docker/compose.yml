@@ -1,15 +1,17 @@
 name: wishlist
 
 services:
-  wishlist:
+  api:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     image: wishlist-image
-    container_name: api
+    container_name: wishlist-api
+
     ports:
-      - "8000:8000"
+      - "7000:6000"
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
     volumes:
       - ../db:/api/db
