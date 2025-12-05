@@ -57,6 +57,7 @@ jobs:
           username: ${{ secrets.NAS_USER }}
           key: ${{ secrets.NAS_SSH_KEY }}
           script: |
+            export PATH=/usr/local/bin:$PATH
             echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
             docker compose -f /volume1/wishlist/compose.staging.yml up -d --pull always --force-recreate --remove-orphans
 
@@ -77,5 +78,6 @@ jobs:
           username: ${{ secrets.NAS_USER }}
           key: ${{ secrets.NAS_SSH_KEY }}
           script: |
+            export PATH=/usr/local/bin:$PATH
             echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
             docker compose -f /volume1/wishlist/compose.prod.yml up -d --pull always --force-recreate --remove-orphans
