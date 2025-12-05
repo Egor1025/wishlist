@@ -1,22 +1,25 @@
 name: CD to NAS (Docker Compose)
 on:
+  pull_request:
   push:
     branches: [ main ]
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
-  group: deploy-prod
+  group: deploy-wishlist
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: ghcr.io/egor1025/wishlist:latest
+  IMAGE_NAME: ghcr.io/egor1025/wishlist
 
 jobs:
   build-and-push-image:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -33,44 +36,46 @@ jobs:
           context: .
           file: docker/Dockerfile
           push: true
-          tags: ${{ env.IMAGE_NAME }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
   deploy-staging:
     environment: staging
     runs-on: ubuntu-22.04
     needs: build-and-push-image
+    timeout-minutes: 10
     steps:
       - name: SSH deploy staging
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.NAS_HOST }}
           port: ${{ secrets.NAS_PORT }}
-          username: root
+          username: ${{ secrets.NAS_USER }}
           key: ${{ secrets.NAS_SSH_KEY }}
           script: |
-            export PATH=/usr/local/bin:$PATH
-            docker --version
-
-            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-            docker pull ${{ env.IMAGE_NAME }}
-            docker compose -f /volume1/wishlist/compose.staging.yml up -d --pull always --force-recreate
+            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+            docker compose -f /volume1/wishlist/compose.staging.yml up -d --pull always --force-recreate --remove-orphans
 
   deploy-prod:
     environment: production
     runs-on: ubuntu-22.04
     needs: deploy-staging
+    timeout-minutes: 10
     steps:
       - name: SSH deploy prod
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.NAS_HOST }}
           port: ${{ secrets.NAS_PORT }}
-          username: root
+          username: ${{ secrets.NAS_USER }}
           key: ${{ secrets.NAS_SSH_KEY }}
           script: |
-            export PATH=/usr/local/bin:$PATH
-            docker --version
-
-            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-            docker pull ${{ env.IMAGE_NAME }}
-            docker compose -f /volume1/wishlist/compose.prod.yml up -d --pull always --force-recreate
+            echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+            docker compose -f /volume1/wishlist/compose.prod.yml up -d --pull always --force-recreate --remove-orphans
