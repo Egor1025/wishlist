@@ -1,0 +1,64 @@
+name: Security - SBOM & SCA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "**/*.py"
+      - "pyproject.toml"
+      - ".github/workflows/ci-sbom-sca.yml"
+      - "EVIDENCE/P09/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sbom_sca:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure evidence dirs
+        run: mkdir -p EVIDENCE/P09
+
+      - name: Generate SBOM (Syft CycloneDX)
+        run: |
+          docker run --rm -v "$PWD":/work -w /work \
+            anchore/syft:v1.38.0@sha256:d2e42aacd6a3f602e2e94f6ef77b102852f76778a8060272c88d567fb6fedecf \
+            packages dir:. -o cyclonedx-json > EVIDENCE/P09/sbom.json
+
+      - name: SCA Scan (Grype)
+        run: |
+          set -e
+          docker run --rm -v "$PWD":/work -w /work \
+            anchore/grype:v0.104.1@sha256:393499677e4cbd080507179ca14a9da528d470968979dd393fbdc3106729a6d1 \
+            sbom:/work/EVIDENCE/P09/sbom.json -o json > EVIDENCE/P09/sca_report.json
+
+          COMMIT_SHORT=${GITHUB_SHA::8}
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+          {
+            echo "# SCA summary"
+            echo
+            echo "Commit: \`$COMMIT_SHORT\`"
+            echo "Workflow run: $RUN_URL"
+            echo
+            echo "## Severity counts (auto)"
+            echo
+            jq '[.matches[].vulnerability.severity] | group_by(.) | map({(.[0]): length}) | add' \
+              EVIDENCE/P09/sca_report.json || echo "{}"
+          } > EVIDENCE/P09/sca_summary.md
+
+      - name: Upload SBOM/SCA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P09_EVIDENCE
+          path: EVIDENCE/P09
