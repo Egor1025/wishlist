@@ -1,0 +1,15 @@
+title = "Wishlist Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlist для ложных срабатываний (тестовые/демо-секреты и артефакты)."
+
+paths = [
+  '''EVIDENCE/.*''',
+]
+
+regexes = [
+  '''FAKE_TEST_TOKEN_[0-9A-F]{16}''',
+]
