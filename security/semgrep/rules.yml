@@ -1,0 +1,40 @@
+rules:
+  - id: wishlist-no-print-in-app
+    message: "Не используйте print в продакшн-коде, используйте логгер."
+    severity: WARNING
+    languages: [python]
+    patterns:
+      - pattern: print(...)
+    paths:
+      include:
+        - "app/**/*.py"
+
+  - id: wishlist-debug-true
+    message: "DEBUG=True в настройках может привести к утечке чувствительных данных."
+    severity: ERROR
+    languages: [python]
+    patterns:
+      - pattern: DEBUG = True
+    paths:
+      include:
+        - "app/**/*.py"
+
+  - id: wishlist-no-bare-except
+    message: "Избегайте bare except: перехватывайте конкретные типы исключений."
+    severity: WARNING
+    languages: [ python ]
+    pattern: |
+      try:
+        ...
+      except:
+        ...
+    paths:
+      include:
+        - "app/**/*.py"
+
+  - id: py-unsafe-html-echo
+    message: "Возможен небезопасный вывод HTML в ответе."
+    severity: WARNING
+    languages: [ python ]
+    pattern: |
+      HTMLResponse(f"...{ $X }...")
