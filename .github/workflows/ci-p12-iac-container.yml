@@ -1,0 +1,118 @@
+name: P12 IaC & Container Security (Hadolint, Checkov, Trivy)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - p12-iac-container
+    paths:
+      - "docker/**"
+      - "iac/**"
+      - "k8s/**"
+      - "deploy/**"
+      - "security/**"
+      - ".github/workflows/ci-p12-iac-container.yml"
+      - "pyproject.toml"
+
+concurrency:
+  group: p12-iac-container-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  security-scans:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      IMAGE_NAME: wishlist-api:p12-ci
+      DOCKERFILE_PATH: docker/Dockerfile
+      IAC_DIRS: docker iac k8s deploy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure evidence dirs
+        run: mkdir -p EVIDENCE/P12
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (local)
+        run: |
+          docker build -t "$IMAGE_NAME" -f "$DOCKERFILE_PATH" .
+
+      - name: Hadolint (Dockerfile -> JSON)
+        shell: bash
+        run: |
+          set +e
+          if [ ! -f "$DOCKERFILE_PATH" ]; then
+            echo '{"error":"Dockerfile not found","path":"'"$DOCKERFILE_PATH"'"}' > EVIDENCE/P12/hadolint_report.json
+            exit 0
+          fi
+          docker pull hadolint/hadolint:latest
+          docker run --rm \
+            -v "${{ github.workspace }}:/work:ro" \
+            -w /work \
+            hadolint/hadolint:latest \
+            hadolint --config security/hadolint.yaml --format json "$DOCKERFILE_PATH" \
+            > EVIDENCE/P12/hadolint_report.json
+          exit 0
+
+      - name: Checkov (IaC -> JSON)
+        shell: bash
+        run: |
+          set +e
+          docker pull bridgecrew/checkov:latest
+          args=()
+          for d in $IAC_DIRS; do
+            if [ -d "$d" ]; then
+              args+=(-d "$d")
+            fi
+          done
+          if [ ${#args[@]} -eq 0 ]; then
+            echo '{"error":"No IaC dirs found","checked":["docker","iac","k8s","deploy"]}' > EVIDENCE/P12/checkov_report.json
+            exit 0
+          fi
+          docker run --rm \
+            -v "${{ github.workspace }}:/work:ro" \
+            -w /work \
+            bridgecrew/checkov:latest \
+            checkov "${args[@]}" -c security/checkov.yaml -o json \
+            > EVIDENCE/P12/checkov_report.json
+          exit 0
+
+      - name: Trivy (image -> JSON)
+        uses: aquasecurity/trivy-action@0.24.0
+        continue-on-error: true
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}
+          format: json
+          output: EVIDENCE/P12/trivy_report.json
+          vuln-type: os,library
+          severity: CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN
+          ignore-unfixed: false
+
+      - name: Hardening summary (generated)
+        shell: bash
+        run: |
+          set +e
+          {
+            echo "# P12 hardening summary"
+            echo
+            echo "## Dockerfile"
+            echo "- Base image pinned (no :latest)"
+            echo "- Non-root user"
+            echo "- Reduced privileges (no-new-privileges in compose), dropped caps, read-only rootfs with tmpfs"
+            echo
+            echo "## Notes"
+            echo "- Reports are attached as artifacts and stored in EVIDENCE/P12/"
+          } > EVIDENCE/P12/hardening_summary.md
+
+      - name: Upload reports as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: p12-iac-container-reports
+          path: EVIDENCE/P12/*

@@ -1,19 +1,14 @@
-name: wishlist
-
 services:
-  api:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    image: wishlist-image
-    container_name: wishlist-api
-
+  wishlist-api:
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     ports:
-      - "8000:6000"
-
-    environment:
-      - PYTHONUNBUFFERED=1
-      - PYTHONDONTWRITEBYTECODE=1
-
+      - "127.0.0.1:8000:8000"
     volumes:
-      - ../db:/api/db
+      - ./db:/app/db:rw
