@@ -1,0 +1,186 @@
+name: P11 DAST (OWASP ZAP baseline)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - p11-dast-zap
+    paths:
+      - "app/**"
+      - "**/*.py"
+      - "pyproject.toml"
+      - "docker/**"
+      - ".github/workflows/ci-p11-dast.yml"
+      - ".zap/**"
+
+concurrency:
+  group: p11-dast-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  zap-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PORT: "8000"
+      HOST: "127.0.0.1"
+      TARGET_PATH: "/health"
+      UVICORN_APP: "app.main:app"
+      UVICORN_ROOT_PATH: ""
+      COMPOSE_FILE: "docker/compose.yml"
+      CONTAINER_NAME: "wishlist-api"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure evidence dirs
+        run: mkdir -p EVIDENCE/P11
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -U pip
+          pip install ".[dev]"
+
+      - name: Prepare sqlite db file
+        shell: bash
+        run: |
+          mkdir -p db
+          if [ ! -f db/app.sqlite ]; then
+            touch db/app.sqlite
+          fi
+          chmod -R a+rwX db
+
+      - name: Start service (docker compose if available, else uvicorn)
+        shell: bash
+        run: |
+          set -e
+          if [ -f "$COMPOSE_FILE" ]; then
+            docker compose -f "$COMPOSE_FILE" up -d --build
+            docker compose -f "$COMPOSE_FILE" ps
+            docker compose -f "$COMPOSE_FILE" logs --no-color --tail=50 || true
+            echo "Waiting for container health: $CONTAINER_NAME"
+            for i in $(seq 1 60); do
+              status=$(docker inspect -f '{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "unknown")
+              echo "Health status: $status"
+              if [ "$status" = "healthy" ]; then
+                break
+              fi
+              if [ "$status" = "unhealthy" ]; then
+                echo "Container is unhealthy"
+                docker logs --tail=200 "$CONTAINER_NAME" || true
+                exit 1
+              fi
+              sleep 2
+            done
+            docker logs --tail=50 "$CONTAINER_NAME" || true
+          else
+            . .venv/bin/activate
+            nohup python -m uvicorn "$UVICORN_APP" --host "$HOST" --port "$PORT" --log-level info > uvicorn.log 2>&1 &
+            echo $! > uvicorn.pid
+          fi
+
+      - name: Wait for readiness
+        shell: bash
+        run: |
+          set -e
+          URL="http://localhost:$PORT$TARGET_PATH"
+          for i in $(seq 1 120); do
+            if curl -fsS --max-time 2 --retry 3 --retry-delay 1 --retry-connrefused "$URL" >/dev/null; then
+              echo "Ready: $URL"
+              exit 0
+            fi
+            if [ $((i % 15)) -eq 0 ]; then
+              echo "Still not ready (attempt $i): $URL"
+              echo "==== uvicorn.log (if any) ===="
+              [ -f uvicorn.log ] && tail -200 uvicorn.log || true
+              if [ -f "$COMPOSE_FILE" ]; then
+                echo "==== docker compose ps ===="
+                docker compose -f "$COMPOSE_FILE" ps || true
+                echo "==== docker compose logs (tail) ===="
+                docker compose -f "$COMPOSE_FILE" logs --no-color --tail=200 || true
+              fi
+            fi
+            sleep 2
+          done
+          echo "Service not ready after timeout: $URL"
+          echo "==== uvicorn.log (if any) ===="
+          [ -f uvicorn.log ] && tail -200 uvicorn.log || true
+          if [ -f "$COMPOSE_FILE" ]; then
+            echo "==== docker compose ps ===="
+            docker compose -f "$COMPOSE_FILE" ps || true
+            echo "==== docker compose logs (tail) ===="
+            docker compose -f "$COMPOSE_FILE" logs --no-color --tail=200 || true
+          fi
+          exit 1
+
+      - name: Fix permissions for ZAP output
+        shell: bash
+        run: |
+          chmod -R a+rwx EVIDENCE/P11
+          if [ -d .zap ]; then
+            chmod -R a+rwx .zap
+          fi
+
+      - name: Run OWASP ZAP baseline (docker)
+        shell: bash
+        run: |
+          set -e
+          TARGET="http://localhost:$PORT$TARGET_PATH"
+          if [ -f ".zap/zap-baseline.conf" ]; then
+            CONF_ARG="-c /zap/wrk/.zap/zap-baseline.conf"
+          else
+            CONF_ARG=""
+          fi
+          docker pull ghcr.io/zaproxy/zaproxy:stable
+          docker run --rm --network host -u root \
+            -v "${{ github.workspace }}:/zap/wrk:rw" \
+            -w /zap/wrk \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+              -t "$TARGET" \
+              -I \
+              -m 5 \
+              -r EVIDENCE/P11/zap_baseline.html \
+              -J EVIDENCE/P11/zap_baseline.json \
+              $CONF_ARG || true
+
+          if [ ! -f EVIDENCE/P11/zap_baseline.html ]; then
+            echo "<html><body><h1>ZAP baseline report was not generated</h1><p>Check the ZAP step logs above for errors (target unreachable, missing config, etc.).</p></body></html>" > EVIDENCE/P11/zap_baseline.html
+          fi
+          if [ ! -f EVIDENCE/P11/zap_baseline.json ]; then
+            echo "{}" > EVIDENCE/P11/zap_baseline.json
+          fi
+
+      - name: Upload reports as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: p11-zap-baseline
+          path: EVIDENCE/P11/zap_baseline.*
+
+      - name: Stop service
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          echo "==== uvicorn.log (if any) ===="
+          [ -f uvicorn.log ] && tail -200 uvicorn.log || true
+          if [ -f "$COMPOSE_FILE" ]; then
+            echo "==== docker compose logs (tail) ===="
+            docker compose -f "$COMPOSE_FILE" logs --no-color --tail=200 || true
+            docker compose -f "$COMPOSE_FILE" down -v
+          fi
+          if [ -f uvicorn.pid ]; then
+            kill "$(cat uvicorn.pid)" || true
+          fi
