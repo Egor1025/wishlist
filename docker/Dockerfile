@@ -21,9 +21,9 @@ COPY --from=build /api/app ./app
 RUN mkdir -p /api/db && chown appuser:appuser /api/db
 RUN pip install --no-cache-dir /dist/*.whl
 
-EXPOSE 6000
+EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:6000/health').read()"
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
 USER appuser
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "6000"]

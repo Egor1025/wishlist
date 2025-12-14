@@ -9,7 +9,7 @@ services:
     container_name: wishlist-api
 
     ports:
-      - "8000:6000"
+      - "7000:6000"
 
     environment:
       - PYTHONUNBUFFERED=1
